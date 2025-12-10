@@ -109,50 +109,78 @@ Route::get('/test', function () {
     return 'Test route working';
 });
 
-// Email Test Route - Only available in production for testing
-if (app()->environment('production')) {
-    Route::get('/test-email/{email}', function ($email) {
+// Email Test Route - Available for testing in all environments
+Route::get('/test-email/{email}', function ($email) {
+    try {
+        // Log current mail configuration
+        \Log::info("Testing email configuration", [
+            'mailer' => config('mail.default'),
+            'sendmail_path' => config('mail.mailers.sendmail.path'),
+            'from_address' => config('mail.from.address'),
+            'from_name' => config('mail.from.name'),
+        ]);
+        
+        // Create a mock user object
+        $user = (object) [
+            'name' => 'Test User',
+            'email' => $email
+        ];
+        
+        $otp = 123456;
+        
+        // Try to send email using PHPMailer first, fallback to Laravel Mail
         try {
-            // Log current mail configuration
-            \Log::info("Testing email configuration", [
-                'mailer' => config('mail.default'),
-                'sendmail_path' => config('mail.mailers.sendmail.path'),
-                'from_address' => config('mail.from.address'),
-                'from_name' => config('mail.from.name'),
-            ]);
+            $mailer = new \App\Mail\PhpMailerOtpVerification($otp, $user);
+            $result = $mailer->send();
             
-            // Create a mock user object
-            $user = (object) [
-                'name' => 'Test User',
-                'email' => $email
-            ];
-            
-            $otp = 123456;
-            
-            // Try to send email using PHPMailer first, fallback to Laravel Mail
-            try {
-                $mailer = new \App\Mail\PhpMailerOtpVerification($otp, $user);
-                $result = $mailer->send();
-                
-                if ($result) {
-                    \Log::info("Test email sent successfully to {$email} using PHPMailer");
-                    return response()->json(['status' => 'success', 'message' => "Test email sent to {$email} using PHPMailer"]);
-                } else {
-                    // Fallback to Laravel Mail
-                    \Mail::to($email)->send(new \App\Mail\OtpVerification($otp, $user));
-                    \Log::info("Test email sent successfully to {$email} using Laravel Mail (fallback)");
-                    return response()->json(['status' => 'success', 'message' => "Test email sent to {$email} using Laravel Mail"]);
-                }
-            } catch (\Exception $e) {
-                \Log::error("Failed to send test email to {$email}. Error: " . $e->getMessage());
-                return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            if ($result) {
+                \Log::info("Test email sent successfully to {$email} using PHPMailer");
+                return response()->json(['status' => 'success', 'message' => "Test email sent to {$email} using PHPMailer"]);
+            } else {
+                // Fallback to Laravel Mail
+                \Mail::to($email)->send(new \App\Mail\OtpVerification($otp, $user));
+                \Log::info("Test email sent successfully to {$email} using Laravel Mail (fallback)");
+                return response()->json(['status' => 'success', 'message' => "Test email sent to {$email} using Laravel Mail"]);
             }
         } catch (\Exception $e) {
             \Log::error("Failed to send test email to {$email}. Error: " . $e->getMessage());
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
-    });
-}
+    } catch (\Exception $e) {
+        \Log::error("Failed to send test email to {$email}. Error: " . $e->getMessage());
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    }
+});
+
+// Test OTP Generation and Sending Route
+Route::get('/test-otp-send/{email}', function ($email) {
+    try {
+        // Create a mock user object
+        $user = new \App\Models\User();
+        $user->email = $email;
+        $user->name = 'Test User';
+        
+        // Log the attempt
+        \Log::info("Testing OTP generation and sending for user: " . $email);
+        
+        // Create OTP controller instance
+        $controller = new \App\Http\Controllers\Auth\OtpController();
+        
+        // Use reflection to call the protected method
+        $reflection = new \ReflectionClass($controller);
+        $method = $reflection->getMethod('generateAndSendOtp');
+        $method->setAccessible(true);
+        
+        // Call the method
+        $method->invoke($controller, $user);
+        
+        \Log::info("OTP generation and sending test completed for user: " . $email);
+        return response()->json(['status' => 'success', 'message' => "OTP generation and sending test completed for {$email}"]);
+    } catch (\Exception $e) {
+        \Log::error("Failed to test OTP generation and sending for {$email}. Error: " . $e->getMessage());
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    }
+});
 
 // Admin routes
 Route::prefix('admin')->name('admin.')->middleware(['admin'])->group(function () {

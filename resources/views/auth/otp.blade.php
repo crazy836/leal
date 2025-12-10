@@ -213,12 +213,6 @@
                 <p>Please check your email for the OTP code</p>
             </div>
             
-            @if(isset($emailSent) && !$emailSent)
-                <div class="alert alert-warning">
-                    <strong>Note:</strong> The code is: <strong>{{ session('otp_code') }}</strong>
-                </div>
-            @endif
-            
             <form method="POST" action="{{ route('register.verify-otp') }}">
                 @csrf
 

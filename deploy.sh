@@ -23,11 +23,10 @@ php artisan migrate --force
 echo "Seeding database with sample data..."
 php artisan db:seed --force
 
-# Clear caches
-echo "Clearing caches..."
-php artisan config:clear
-php artisan route:clear
-php artisan view:clear
-php artisan cache:clear
+# Clear and rebuild caches
+echo "Optimizing caches for production..."
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
 
 echo "Deployment completed!"

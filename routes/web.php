@@ -109,6 +109,51 @@ Route::get('/test', function () {
     return 'Test route working';
 });
 
+// Email Test Route - Only available in production for testing
+if (app()->environment('production')) {
+    Route::get('/test-email/{email}', function ($email) {
+        try {
+            // Log current mail configuration
+            \Log::info("Testing email configuration", [
+                'mailer' => config('mail.default'),
+                'sendmail_path' => config('mail.mailers.sendmail.path'),
+                'from_address' => config('mail.from.address'),
+                'from_name' => config('mail.from.name'),
+            ]);
+            
+            // Create a mock user object
+            $user = (object) [
+                'name' => 'Test User',
+                'email' => $email
+            ];
+            
+            $otp = 123456;
+            
+            // Try to send email using PHPMailer first, fallback to Laravel Mail
+            try {
+                $mailer = new \App\Mail\PhpMailerOtpVerification($otp, $user);
+                $result = $mailer->send();
+                
+                if ($result) {
+                    \Log::info("Test email sent successfully to {$email} using PHPMailer");
+                    return response()->json(['status' => 'success', 'message' => "Test email sent to {$email} using PHPMailer"]);
+                } else {
+                    // Fallback to Laravel Mail
+                    \Mail::to($email)->send(new \App\Mail\OtpVerification($otp, $user));
+                    \Log::info("Test email sent successfully to {$email} using Laravel Mail (fallback)");
+                    return response()->json(['status' => 'success', 'message' => "Test email sent to {$email} using Laravel Mail"]);
+                }
+            } catch (\Exception $e) {
+                \Log::error("Failed to send test email to {$email}. Error: " . $e->getMessage());
+                return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            }
+        } catch (\Exception $e) {
+            \Log::error("Failed to send test email to {$email}. Error: " . $e->getMessage());
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    });
+}
+
 // Admin routes
 Route::prefix('admin')->name('admin.')->middleware(['admin'])->group(function () {
     Route::get('/dashboard', [App\Http\Controllers\Admin\DashboardController::class, 'index'])->name('dashboard');

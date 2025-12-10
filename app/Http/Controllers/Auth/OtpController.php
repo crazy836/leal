@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Mail\PhpMailerOtpVerification;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -19,19 +20,24 @@ class OtpController extends Controller
     {
         // Check if there's a pending user ID in session
         if (!session('pending_user_id')) {
+            \Log::warning("No pending_user_id in session, redirecting to register");
             return redirect()->route('register');
         }
 
         $user = User::find(session('pending_user_id'));
         
         if (!$user) {
+            \Log::warning("User not found for pending_user_id: " . session('pending_user_id') . ", redirecting to register");
             return redirect()->route('register');
         }
 
-        // Generate and send OTP
-        $emailSent = $this->generateAndSendOtp($user);
+        \Log::info("Generating and sending OTP for user: " . $user->email . " (ID: " . $user->id . ")");
 
-        return view('auth.otp', compact('emailSent'));
+        // Generate and send OTP
+        $this->generateAndSendOtp($user);
+
+        // Don't pass emailSent variable anymore, just show the form
+        return view('auth.otp');
     }
 
     /**
@@ -118,41 +124,53 @@ class OtpController extends Controller
         // Generate 6-digit OTP
         $otp = rand(100000, 999999);
 
+        \Log::info("Generated OTP: " . $otp . " for user: " . $user->email);
+
         // Store OTP in session with expiration (5 minutes)
         session([
             'otp_code' => $otp,
             'otp_expires_at' => now()->addMinutes(5)
         ]);
 
-        // Save OTP to database
-        $user->otps()->create([
-            'otp_code' => $otp,
-            'expires_at' => now()->addMinutes(5),
-            'is_used' => false
-        ]);
+        // Try to save OTP to database (continue even if this fails)
+        try {
+            $user->otps()->create([
+                'otp_code' => $otp,
+                'expires_at' => now()->addMinutes(5),
+                'is_used' => false
+            ]);
+            \Log::info("Stored OTP in database for user: " . $user->email);
+        } catch (\Exception $e) {
+            \Log::warning("Failed to store OTP in database for user: " . $user->email . ". Error: " . $e->getMessage());
+            // Continue with email sending even if database save fails
+        }
+
+        \Log::info("Stored OTP in session for user: " . $user->email);
 
         // Log the attempt to send OTP
         \Log::info("Attempting to send OTP to {$user->email}", [
             'user_id' => $user->id,
             'otp' => $otp,
-            'mail_config' => [
-                'mailer' => config('mail.default'),
-                'host' => config('mail.mailers.smtp.host'),
-                'port' => config('mail.mailers.smtp.port'),
-                'username' => config('mail.mailers.smtp.username'),
-            ]
         ]);
 
-        // Send OTP via email
+        // Try to send OTP using PHPMailer first, fallback to Laravel Mail if needed
         try {
-            \Mail::to($user->email)->send(new \App\Mail\OtpVerification($otp, $user));
-            \Log::info("OTP sent successfully to user {$user->email}: {$otp}");
-            return true;
+            \Log::info("Initializing PHPMailer for user: " . $user->email);
+            $mailer = new PhpMailerOtpVerification($otp, $user);
+            $result = $mailer->send();
+            
+            if ($result) {
+                \Log::info("OTP sent successfully to user {$user->email}: {$otp} using PHPMailer");
+            } else {
+                \Log::warning("PHPMailer failed to send OTP to {$user->email}, falling back to Laravel Mail");
+                // Fallback to Laravel Mail
+                \Mail::to($user->email)->send(new \App\Mail\OtpVerification($otp, $user));
+                \Log::info("OTP sent successfully to user {$user->email}: {$otp} using Laravel Mail (fallback)");
+            }
         } catch (\Exception $e) {
-            \Log::error("Failed to send OTP to {$user->email}. Error: " . $e->getMessage() . ". Trace: " . $e->getTraceAsString());
-            // Fallback to logging the OTP if email fails
+            \Log::error("Failed to send OTP for {$user->email} using PHPMailer. Error: " . $e->getMessage() . " Trace: " . $e->getTraceAsString());
+            // Log the OTP if all sending methods fail
             \Log::info("OTP for user {$user->email}: {$otp}");
-            return false;
         }
     }
 

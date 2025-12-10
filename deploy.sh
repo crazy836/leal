@@ -19,6 +19,10 @@ fi
 echo "Running database migrations..."
 php artisan migrate --force
 
+# Seed the database with sample data
+echo "Seeding database with sample data..."
+php artisan db:seed --force
+
 # Clear caches
 echo "Clearing caches..."
 php artisan config:clear

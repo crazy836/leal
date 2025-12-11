@@ -458,6 +458,7 @@
 
 @section('scripts')
 <script>
+    // Handle avatar preview when selecting a new file
     document.getElementById('avatar').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (file) {
@@ -471,10 +472,21 @@
                     placeholder.classList.add('d-none');
                 }
                 
-                preview.src = e.target.result;
-                preview.classList.remove('d-none');
+                if (preview) {
+                    preview.src = e.target.result;
+                    preview.classList.remove('d-none');
+                }
             }
             reader.readAsDataURL(file);
+        }
+    });
+    
+    // Handle form submission to show loading state
+    document.getElementById('profileForm').addEventListener('submit', function() {
+        const submitButton = this.querySelector('button[type="submit"]');
+        if (submitButton) {
+            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Updating...';
+            submitButton.disabled = true;
         }
     });
 </script>
